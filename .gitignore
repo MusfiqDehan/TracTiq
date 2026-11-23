@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.local
+
+# Python / uv
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Bun / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/playwright-report/
+frontend/test-results/
+# Keep committed trace artifact
+!frontend/e2e/artifacts/
+!frontend/e2e/artifacts/sample-failure-trace.zip
+
+# OS
+.DS_Store
+docs/
