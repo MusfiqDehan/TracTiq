@@ -19,7 +19,9 @@ frontend/test-results/
 # Keep committed trace artifact
 !frontend/e2e/artifacts/
 !frontend/e2e/artifacts/sample-failure-trace.zip
+frontend/e2e/artifacts/sample-failure-trace/
 
 # OS
 .DS_Store
 docs/
+sample-failure-trace/
