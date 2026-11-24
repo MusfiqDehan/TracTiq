@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Start Postgres 18.7
+        run: docker compose up -d db
+
+      - name: Backend lint, typecheck, migrations & tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5443/tractiq
+          APP_NOW: "2026-11-11T15:00:00Z"
+        run: |
+          uv sync
+          uv run alembic upgrade head
+          uv run seed-db --reset
+          uv run ruff check .
+          uv run mypy app
+          uv run pytest -v
+          uv run seed-db --reset
+          uv run rules-report > /tmp/ci_rules_report.json
+          diff -u ../rules_report.json /tmp/ci_rules_report.json
+
+      - name: Frontend checks & Playwright E2E
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile || bun install
+          bun run typecheck
+          bun run lint
+          bun run test:unit
+          bunx playwright install chromium
+          cd .. && docker compose up -d --build
+          cd frontend && bun run test:e2e
