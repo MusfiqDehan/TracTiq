@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, CheckSquare, Clock, Search, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckSquare,
+  Clock,
+  Search,
+  Square,
+} from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import type {
   EligibleOwnerRead,
@@ -15,6 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PaginationBar } from "@/components/ui/pagination";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SelectField } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 
 interface TodosSectionProps {
@@ -24,6 +34,8 @@ interface TodosSectionProps {
   canWrite: boolean;
   onIssueFocused?: (issueId: string) => void;
 }
+
+const PAGE_SIZE = 10;
 
 export function TodosSection({
   teamId,
@@ -35,13 +47,18 @@ export function TodosSection({
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
-  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done" | "overdue">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "open" | "done" | "overdue"
+  >("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [search, setSearch] = useState<string>("");
+  const [page, setPage] = useState<number>(1);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [extraPages, setExtraPages] = useState<TodoRead[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  const hasFilters = statusFilter !== "all" || ownerFilter !== "" || search.trim() !== "";
+  const hasFilters =
+    statusFilter !== "all" || ownerFilter !== "" || search.trim() !== "";
 
   const filteredQuery = useQuery({
     queryKey: ["team-todos", teamId, statusFilter, ownerFilter, search],
@@ -49,7 +66,9 @@ export function TodosSection({
       const qs = new URLSearchParams({ status: statusFilter, limit: "30" });
       if (ownerFilter) qs.set("owner_id", ownerFilter);
       if (search.trim()) qs.set("search", search.trim());
-      const res = await apiRequest<TodosListResponse>(`/api/teams/${teamId}/todos?${qs.toString()}`);
+      const res = await apiRequest<TodosListResponse>(
+        `/api/teams/${teamId}/todos?${qs.toString()}`
+      );
       setExtraPages([]);
       setNextCursor(res.meta.next_cursor);
       return res.data;
@@ -57,30 +76,68 @@ export function TodosSection({
     enabled: hasFilters,
   });
 
-  const activeData = hasFilters ? filteredQuery.data ?? initialTodos : initialTodos;
-  const items = hasFilters ? [...activeData.items, ...extraPages] : activeData.items;
+  const activeData = hasFilters
+    ? (filteredQuery.data ?? initialTodos)
+    : initialTodos;
+  const items = hasFilters
+    ? [...activeData.items, ...extraPages]
+    : activeData.items;
   const stats = activeData.last_closed_week;
 
+  // Compute exact filter pill counts from the loaded team To-Do set
+  const statusCounts = useMemo(() => {
+    const base = initialTodos.items;
+    let open = 0;
+    let overdue = 0;
+    let done = 0;
+    for (const td of base) {
+      if (td.done_at !== null) {
+        done += 1;
+      } else {
+        open += 1;
+        if (td.is_overdue) overdue += 1;
+      }
+    }
+    return { all: base.length, open, overdue, done };
+  }, [initialTodos.items]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pagedItems = items.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+
   const loadMore = async () => {
-    if (!nextCursor) return;
-    const qs = new URLSearchParams({
-      status: statusFilter,
-      limit: "30",
-      cursor: nextCursor,
-    });
-    if (ownerFilter) qs.set("owner_id", ownerFilter);
-    if (search.trim()) qs.set("search", search.trim());
-    const res = await apiRequest<TodosListResponse>(`/api/teams/${teamId}/todos?${qs.toString()}`);
-    setExtraPages((prev) => [...prev, ...res.data.items]);
-    setNextCursor(res.meta.next_cursor);
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const qs = new URLSearchParams({
+        status: statusFilter,
+        limit: "30",
+        cursor: nextCursor,
+      });
+      if (ownerFilter) qs.set("owner_id", ownerFilter);
+      if (search.trim()) qs.set("search", search.trim());
+      const res = await apiRequest<TodosListResponse>(
+        `/api/teams/${teamId}/todos?${qs.toString()}`
+      );
+      setExtraPages((prev) => [...prev, ...res.data.items]);
+      setNextCursor(res.meta.next_cursor);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const toggleMutation = useMutation({
     mutationFn: async (params: { todoId: string; done: boolean }) => {
-      return apiRequest<TodoRead>(`/api/teams/${teamId}/todos/${params.todoId}`, {
-        method: "PATCH",
-        body: { done: params.done },
-      });
+      return apiRequest<TodoRead>(
+        `/api/teams/${teamId}/todos/${params.todoId}`,
+        {
+          method: "PATCH",
+          body: { done: params.done },
+        }
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-overview", teamId] });
@@ -97,10 +154,13 @@ export function TodosSection({
 
   const makeIssueMutation = useMutation({
     mutationFn: async (todoId: string) => {
-      return apiRequest<MakeIssueResult>(`/api/teams/${teamId}/issues/make-issue`, {
-        method: "POST",
-        body: { todo_id: todoId },
-      });
+      return apiRequest<MakeIssueResult>(
+        `/api/teams/${teamId}/issues/make-issue`,
+        {
+          method: "POST",
+          body: { todo_id: todoId },
+        }
+      );
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["team-overview", teamId] });
@@ -124,29 +184,37 @@ export function TodosSection({
     },
   });
 
+  const ownerFilterOptions = [
+    { value: "", label: "All Owners" },
+    ...eligibleOwners.map((o) => ({ value: o.id, label: o.name })),
+  ];
+
   return (
-    <Card data-testid="todos-section">
+    <Card className="flex h-full flex-col" data-testid="todos-section">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <CheckSquare className="h-4 w-4 text-teal-600" />
+            <CheckSquare className="h-4 w-4 text-[var(--accent-text)]" />
             <CardTitle>To-Dos</CardTitle>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            7-day commitments · Last closed week ({formatShortWeek(stats.week_start)})
+          <p className="mt-1 text-xs text-[var(--text-muted)] tabular-nums">
+            7-day commitments · Last closed week (
+            {formatShortWeek(stats.week_start)})
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {stats.rate_percent === null ? (
-            <Badge variant="secondary">Last closed week: No To-Dos due</Badge>
+            <Badge variant="neutral">Last closed week: No To-Dos due</Badge>
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
-              <span className="text-xs font-medium text-slate-600">Completion:</span>
-              <span className="text-sm font-bold text-slate-900 tabular-nums">
+            <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-1.5">
+              <span className="text-xs font-medium text-[var(--text-secondary)]">
+                Completion:
+              </span>
+              <span className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
                 {stats.rate_percent}% ({stats.done}/{stats.due})
               </span>
-              <Badge variant={stats.meets_target ? "success" : "warning"}>
+              <Badge variant={stats.meets_target ? "on-track" : "warning"} dot>
                 {stats.meets_target ? "Meets 90% Target" : "Below 90% Target"}
               </Badge>
             </div>
@@ -154,155 +222,211 @@ export function TodosSection({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100 p-0.5">
-            {(["all", "open", "overdue", "done"] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setStatusFilter(st)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-semibold capitalize transition-colors cursor-pointer",
-                  statusFilter === st
-                    ? "bg-white text-slate-900 shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <SegmentedControl
+            value={statusFilter}
+            onChange={(next) => {
+              setStatusFilter(next);
+              setPage(1);
+            }}
+            size="sm"
+            ariaLabel="Filter To-Dos by status"
+            className="w-full"
+            options={[
+              {
+                value: "all",
+                label: (
+                  <span className="tabular-nums">
+                    All ({statusCounts.all})
+                  </span>
+                ),
+              },
+              {
+                value: "open",
+                label: (
+                  <span className="tabular-nums">
+                    Open ({statusCounts.open})
+                  </span>
+                ),
+              },
+              {
+                value: "overdue",
+                label: (
+                  <span className="tabular-nums">
+                    Overdue ({statusCounts.overdue})
+                  </span>
+                ),
+              },
+              {
+                value: "done",
+                label: (
+                  <span className="tabular-nums">
+                    Done ({statusCounts.done})
+                  </span>
+                ),
+              },
+            ]}
+          />
 
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Search To-Dos..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute top-3.5 left-3 h-4 w-4 text-[var(--text-muted)] sm:top-2.5" />
+              <Input
+                placeholder="Search To-Dos..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="pl-9"
+              />
+            </div>
+
+            <SelectField
+              ariaLabel="Filter To-Dos by owner"
+              value={ownerFilter}
+              onValueChange={(val) => {
+                setOwnerFilter(val);
+                setPage(1);
+              }}
+              options={ownerFilterOptions}
+              size="md"
+              triggerClassName="w-full sm:w-40"
             />
           </div>
-
-          <select
-            aria-label="Filter To-Dos by owner"
-            value={ownerFilter}
-            onChange={(e) => setOwnerFilter(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700"
-          >
-            <option value="">All Owners</option>
-            {eligibleOwners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
         </div>
 
-        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-          {items.length === 0 ? (
-            <p className="p-6 text-center text-sm text-slate-500">No To-Dos found.</p>
-          ) : (
-            items.map((todo) => {
-              const isDone = todo.done_at !== null;
-              return (
-                <div
-                  key={todo.id}
-                  data-testid={`todo-row-${todo.id}`}
-                  className={cn(
-                    "flex flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
-                    todo.is_overdue && "bg-rose-50/40"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      disabled={!canWrite || toggleMutation.isPending}
-                      onClick={() =>
-                        toggleMutation.mutate({ todoId: todo.id, done: !isDone })
-                      }
-                      aria-label={isDone ? `Mark ${todo.title} incomplete` : `Mark ${todo.title} done`}
-                      className={cn(
-                        "mt-0.5 rounded text-slate-500 transition-colors",
-                        canWrite
-                          ? "cursor-pointer hover:text-teal-600"
-                          : "cursor-default opacity-60"
-                      )}
-                    >
-                      {isDone ? (
-                        <CheckSquare className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <Square className="h-4 w-4" />
-                      )}
-                    </button>
+        <div className="flex-1">
+          <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[8px] border border-[var(--border-default)]">
+            {pagedItems.length === 0 ? (
+              <p className="p-6 text-center text-sm text-[var(--text-muted)]">
+                No To-Dos found.
+              </p>
+            ) : (
+              pagedItems.map((todo) => {
+                const isDone = todo.done_at !== null;
+                return (
+                  <div
+                    key={todo.id}
+                    data-testid={`todo-row-${todo.id}`}
+                    className={cn(
+                      "flex flex-col gap-3 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                      todo.is_overdue
+                        ? "bg-[var(--status-danger-bg)]/45"
+                        : "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)]/35"
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        disabled={!canWrite || toggleMutation.isPending}
+                        onClick={() =>
+                          toggleMutation.mutate({
+                            todoId: todo.id,
+                            done: !isDone,
+                          })
+                        }
+                        aria-label={
+                          isDone
+                            ? `Mark ${todo.title} incomplete`
+                            : `Mark ${todo.title} done`
+                        }
+                        className={cn(
+                          "-mt-1.5 -ml-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-muted)] transition-colors sm:mt-0 sm:-ml-1 sm:h-8 sm:w-8",
+                          canWrite
+                            ? "cursor-pointer hover:bg-[var(--bg-hover)] hover:text-[var(--accent-text)]"
+                            : "cursor-default opacity-60"
+                        )}
+                      >
+                        {isDone ? (
+                          <CheckSquare className="h-4 w-4 text-[var(--status-on-track-text)]" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
 
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={cn(
-                            "text-sm font-medium",
-                            isDone ? "text-slate-400 line-through" : "text-slate-900"
-                          )}
-                        >
-                          {todo.title}
-                        </span>
-                        {todo.is_overdue && (
-                          <Badge variant="danger">
-                            <Clock className="h-3 w-3" />
-                            Overdue
-                          </Badge>
-                        )}
-                        {todo.source_issue_title && (
-                          <Badge variant="secondary">From: {todo.source_issue_title}</Badge>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                        <span>
-                          Owner: <strong className="text-slate-700">{todo.owner_name}</strong>
-                        </span>
-                        <span>Due {formatShortWeek(todo.due_date)}</span>
-                        {todo.done_at && (
-                          <span className="text-emerald-700">
-                            Done {formatChicagoTimestamp(todo.done_at)}
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "text-sm font-semibold",
+                              isDone
+                                ? "text-[var(--text-muted)] line-through"
+                                : "text-[var(--text-primary)]"
+                            )}
+                          >
+                            {todo.title}
                           </span>
-                        )}
+                          {todo.is_overdue && (
+                            <Badge variant="off-track">
+                              <Clock className="h-3 w-3" />
+                              Overdue
+                            </Badge>
+                          )}
+                          {todo.source_issue_title && (
+                            <Badge variant="neutral">
+                              From: {todo.source_issue_title}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)]">
+                          <span>
+                            Owner:{" "}
+                            <strong className="font-semibold text-[var(--text-secondary)]">
+                              {todo.owner_name}
+                            </strong>
+                          </span>
+                          <span className="tabular-nums">
+                            Due {formatShortWeek(todo.due_date)}
+                          </span>
+                          {todo.done_at && (
+                            <span className="font-medium text-[var(--status-on-track-text)] tabular-nums">
+                              Done {formatChicagoTimestamp(todo.done_at)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {todo.is_overdue && canWrite && (
-                    <Button
-                      size="sm"
-                      variant={todo.unsolved_issue_id ? "outline" : "destructive"}
-                      onClick={() => makeIssueMutation.mutate(todo.id)}
-                      className="shrink-0"
-                    >
-                      {todo.unsolved_issue_id ? (
-                        <>
-                          <Check className="h-3.5 w-3.5" />
-                          View Issue
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          Make it an Issue
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              );
-            })
-          )}
+                    {todo.is_overdue && canWrite && (
+                      <Button
+                        size="sm"
+                        variant={
+                          todo.unsolved_issue_id ? "secondary" : "destructive"
+                        }
+                        onClick={() => makeIssueMutation.mutate(todo.id)}
+                        className="shrink-0"
+                      >
+                        {todo.unsolved_issue_id ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            View Issue
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            Make it an Issue
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
-        {nextCursor && (
-          <div className="flex justify-center pt-1">
-            <Button size="sm" variant="outline" onClick={loadMore}>
-              Load More To-Dos
-            </Button>
-          </div>
-        )}
+        <PaginationBar
+          page={safePage}
+          pageSize={PAGE_SIZE}
+          totalItems={items.length}
+          onPageChange={setPage}
+          hasMoreRemote={Boolean(hasFilters && nextCursor)}
+          loadingMoreRemote={loadingMore}
+          onLoadMoreRemote={loadMore}
+        />
       </CardContent>
     </Card>
   );
