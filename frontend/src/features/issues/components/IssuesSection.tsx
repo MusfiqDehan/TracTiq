@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -10,16 +10,17 @@ import {
   Search,
 } from "lucide-react";
 import { ApiError, apiRequest } from "@/lib/api-client";
-import type {
-  EligibleOwnerRead,
-  IssueRead,
-  TodoRead,
-} from "@/lib/types";
+import type { EligibleOwnerRead, IssueRead, TodoRead } from "@/lib/types";
 import { cn, formatChicagoTimestamp, formatShortWeek } from "@/lib/utils";
+import { useViewportTier } from "@/hooks/use-viewport-tier";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PaginationBar } from "@/components/ui/pagination";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SelectField } from "@/components/ui/select";
+import { ResponsiveSheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 
 interface IssuesSectionProps {
@@ -31,6 +32,26 @@ interface IssuesSectionProps {
   highlightedIssueId?: string | null;
 }
 
+const PAGE_SIZE = 10;
+
+const NEW_PRIORITY_OPTIONS = [
+  { value: "", label: "No priority" },
+  { value: "5", label: "Priority 5" },
+  { value: "4", label: "Priority 4" },
+  { value: "3", label: "Priority 3" },
+  { value: "2", label: "Priority 2" },
+  { value: "1", label: "Priority 1" },
+];
+
+const INLINE_PRIORITY_OPTIONS = [
+  { value: "", label: "No Prio" },
+  { value: "5", label: "P5" },
+  { value: "4", label: "P4" },
+  { value: "3", label: "P3" },
+  { value: "2", label: "P2" },
+  { value: "1", label: "P1" },
+];
+
 export function IssuesSection({
   teamId,
   unsolvedIssues,
@@ -41,20 +62,35 @@ export function IssuesSection({
 }: IssuesSectionProps) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const tier = useViewportTier();
 
   const [activeTab, setActiveTab] = useState<"unsolved" | "solved">("unsolved");
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<string>("");
+
+  const [unsolvedSearch, setUnsolvedSearch] = useState("");
+  const [unsolvedOwner, setUnsolvedOwner] = useState("");
+  const [unsolvedPageState, setUnsolvedPageState] = useState<{
+    page: number;
+    focusKey: string | null;
+  }>({ page: 1, focusKey: null });
+  const [recentlyCreatedId, setRecentlyCreatedId] = useState<string | null>(
+    null
+  );
 
   const [solvingId, setSolvingId] = useState<string | null>(null);
   const [resolutionNote, setResolutionNote] = useState("");
 
   const [todoIssueId, setTodoIssueId] = useState<string | null>(null);
   const [todoTitle, setTodoTitle] = useState("");
-  const [todoOwnerId, setTodoOwnerId] = useState<string>(eligibleOwners[0]?.id || "");
+  const [todoOwnerId, setTodoOwnerId] = useState<string>(
+    eligibleOwners[0]?.id || ""
+  );
 
   const [solvedSearch, setSolvedSearch] = useState("");
   const [solvedOwner, setSolvedOwner] = useState("");
+  const [solvedPage, setSolvedPage] = useState(1);
+  const [loadingMoreSolved, setLoadingMoreSolved] = useState(false);
   const solvedFilterKey = `${teamId}:${solvedSearch.trim()}:${solvedOwner}`;
   const [extraSolved, setExtraSolved] = useState<{
     key: string;
@@ -68,32 +104,125 @@ export function IssuesSection({
       const qs = new URLSearchParams({ status: "solved", limit: "20" });
       if (solvedSearch.trim()) qs.set("search", solvedSearch.trim());
       if (solvedOwner) qs.set("owner_id", solvedOwner);
-      return apiRequest<IssueRead[]>(`/api/teams/${teamId}/issues?${qs.toString()}`);
+      return apiRequest<IssueRead[]>(
+        `/api/teams/${teamId}/issues?${qs.toString()}`
+      );
     },
     enabled: activeTab === "solved",
   });
 
   const activeExtra = extraSolved?.key === solvedFilterKey ? extraSolved : null;
-  const solvedPages = [...(solvedQuery.data?.data ?? []), ...(activeExtra?.items ?? [])];
+  const solvedPages = [
+    ...(solvedQuery.data?.data ?? []),
+    ...(activeExtra?.items ?? []),
+  ];
   const solvedCursor =
-    activeExtra !== null ? activeExtra.cursor : (solvedQuery.data?.meta.next_cursor ?? null);
+    activeExtra !== null
+      ? activeExtra.cursor
+      : (solvedQuery.data?.meta.next_cursor ?? null);
 
   const loadMoreSolved = async () => {
-    if (!solvedCursor) return;
-    const qs = new URLSearchParams({
-      status: "solved",
-      limit: "20",
-      cursor: solvedCursor,
-    });
-    if (solvedSearch.trim()) qs.set("search", solvedSearch.trim());
-    if (solvedOwner) qs.set("owner_id", solvedOwner);
-    const res = await apiRequest<IssueRead[]>(`/api/teams/${teamId}/issues?${qs.toString()}`);
-    setExtraSolved((prev) => ({
-      key: solvedFilterKey,
-      items: [...(prev?.key === solvedFilterKey ? prev.items : []), ...res.data],
-      cursor: res.meta.next_cursor,
-    }));
+    if (!solvedCursor || loadingMoreSolved) return;
+    setLoadingMoreSolved(true);
+    try {
+      const qs = new URLSearchParams({
+        status: "solved",
+        limit: "20",
+        cursor: solvedCursor,
+      });
+      if (solvedSearch.trim()) qs.set("search", solvedSearch.trim());
+      if (solvedOwner) qs.set("owner_id", solvedOwner);
+      const res = await apiRequest<IssueRead[]>(
+        `/api/teams/${teamId}/issues?${qs.toString()}`
+      );
+      setExtraSolved((prev) => ({
+        key: solvedFilterKey,
+        items: [
+          ...(prev?.key === solvedFilterKey ? prev.items : []),
+          ...res.data,
+        ],
+        cursor: res.meta.next_cursor,
+      }));
+    } finally {
+      setLoadingMoreSolved(false);
+    }
   };
+
+  // Preserve canonical §2.6 Issue rank (#1..N) regardless of filtering or pagination
+  const issueRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    unsolvedIssues.forEach((issue, idx) => {
+      map.set(issue.id, idx + 1);
+    });
+    return map;
+  }, [unsolvedIssues]);
+
+  const activeFocusId = highlightedIssueId || recentlyCreatedId;
+  const isFocusControllingFilters =
+    Boolean(activeFocusId) && unsolvedPageState.focusKey !== activeFocusId;
+
+  const filteredUnsolved = useMemo(() => {
+    if (isFocusControllingFilters) return unsolvedIssues;
+    const q = unsolvedSearch.trim().toLowerCase();
+    return unsolvedIssues.filter((issue) => {
+      if (unsolvedOwner && issue.owner_id !== unsolvedOwner) return false;
+      if (q && !issue.title.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [unsolvedIssues, unsolvedSearch, unsolvedOwner, isFocusControllingFilters]);
+
+  const focusedIndex = activeFocusId
+    ? filteredUnsolved.findIndex((i) => i.id === activeFocusId)
+    : -1;
+  const focusedTargetPage =
+    focusedIndex >= 0 ? Math.floor(focusedIndex / PAGE_SIZE) + 1 : null;
+
+  const totalUnsolvedPages = Math.max(
+    1,
+    Math.ceil(filteredUnsolved.length / PAGE_SIZE)
+  );
+  const rawUnsolvedPage =
+    focusedTargetPage !== null && unsolvedPageState.focusKey !== activeFocusId
+      ? focusedTargetPage
+      : unsolvedPageState.page;
+  const safeUnsolvedPage = Math.min(
+    Math.max(1, rawUnsolvedPage),
+    totalUnsolvedPages
+  );
+
+  const pagedUnsolved = useMemo(
+    () =>
+      filteredUnsolved.slice(
+        (safeUnsolvedPage - 1) * PAGE_SIZE,
+        safeUnsolvedPage * PAGE_SIZE
+      ),
+    [filteredUnsolved, safeUnsolvedPage]
+  );
+
+  // Smoothly scroll focused/newly created Issue into view once its page is rendered
+  useEffect(() => {
+    if (!activeFocusId) return;
+    const el = document.querySelector(
+      `[data-testid="issue-card-${activeFocusId}"]`
+    );
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeFocusId, safeUnsolvedPage]);
+
+  const effectiveTab: "unsolved" | "solved" = isFocusControllingFilters
+    ? "unsolved"
+    : activeTab;
+
+  const totalSolvedPages = Math.max(
+    1,
+    Math.ceil(solvedPages.length / PAGE_SIZE)
+  );
+  const safeSolvedPage = Math.min(Math.max(1, solvedPage), totalSolvedPages);
+  const pagedSolved = solvedPages.slice(
+    (safeSolvedPage - 1) * PAGE_SIZE,
+    safeSolvedPage * PAGE_SIZE
+  );
 
   const createIssueMutation = useMutation({
     mutationFn: async () => {
@@ -105,11 +234,27 @@ export function IssuesSection({
         },
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const created = res.data;
       setNewTitle("");
       setNewPriority("");
+      setUnsolvedSearch("");
+      setUnsolvedOwner("");
+      setActiveTab("unsolved");
+      setRecentlyCreatedId(created.id);
+      setUnsolvedPageState({ page: 1, focusKey: null });
       queryClient.invalidateQueries({ queryKey: ["team-overview", teamId] });
-      pushToast({ title: "Issue created", variant: "success" });
+      pushToast({
+        title: "Issue created",
+        description:
+          created.priority !== null
+            ? `${created.title} · Priority P${created.priority} (positioned in Issue order)`
+            : `${created.title} · No priority (positioned at end of queue — set P5–P1 to move up)`,
+        variant: "success",
+      });
+      setTimeout(() => {
+        setRecentlyCreatedId((curr) => (curr === created.id ? null : curr));
+      }, 5000);
     },
     onError: (err) => {
       pushToast({
@@ -126,11 +271,14 @@ export function IssuesSection({
       priority: number | null;
       version: number;
     }) => {
-      return apiRequest<IssueRead>(`/api/teams/${teamId}/issues/${params.issueId}`, {
-        method: "PATCH",
-        body: { priority: params.priority },
-        ifMatchVersion: params.version,
-      });
+      return apiRequest<IssueRead>(
+        `/api/teams/${teamId}/issues/${params.issueId}`,
+        {
+          method: "PATCH",
+          body: { priority: params.priority },
+          ifMatchVersion: params.version,
+        }
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-overview", teamId] });
@@ -139,7 +287,8 @@ export function IssuesSection({
       if (err instanceof ApiError && err.status === 409) {
         pushToast({
           title: "Priority conflict detected",
-          description: "Another teammate updated this Issue. Reloaded latest order.",
+          description:
+            "Another teammate updated this Issue. Reloaded latest order.",
           variant: "warning",
         });
         queryClient.invalidateQueries({ queryKey: ["team-overview", teamId] });
@@ -155,10 +304,13 @@ export function IssuesSection({
 
   const solveMutation = useMutation({
     mutationFn: async (params: { issueId: string; note: string }) => {
-      return apiRequest<IssueRead>(`/api/teams/${teamId}/issues/${params.issueId}/solve`, {
-        method: "POST",
-        body: { resolution_note: params.note },
-      });
+      return apiRequest<IssueRead>(
+        `/api/teams/${teamId}/issues/${params.issueId}/solve`,
+        {
+          method: "POST",
+          body: { resolution_note: params.note },
+        }
+      );
     },
     onSuccess: () => {
       setSolvingId(null);
@@ -170,18 +322,26 @@ export function IssuesSection({
     onError: (err) => {
       pushToast({
         title: "Resolution note required",
-        description: err instanceof Error ? err.message : "Enter a resolution note",
+        description:
+          err instanceof Error ? err.message : "Enter a resolution note",
         variant: "error",
       });
     },
   });
 
   const addTodoMutation = useMutation({
-    mutationFn: async (params: { issueId: string; title: string; ownerId: string }) => {
-      return apiRequest<TodoRead>(`/api/teams/${teamId}/issues/${params.issueId}/todos`, {
-        method: "POST",
-        body: { title: params.title, owner_id: params.ownerId },
-      });
+    mutationFn: async (params: {
+      issueId: string;
+      title: string;
+      ownerId: string;
+    }) => {
+      return apiRequest<TodoRead>(
+        `/api/teams/${teamId}/issues/${params.issueId}/todos`,
+        {
+          method: "POST",
+          body: { title: params.title, owner_id: params.ownerId },
+        }
+      );
     },
     onSuccess: (res) => {
       setTodoIssueId(null);
@@ -203,66 +363,204 @@ export function IssuesSection({
     },
   });
 
+  const ownerOptions = eligibleOwners.map((owner) => ({
+    value: owner.id,
+    label: owner.name,
+  }));
+
+  const ownerFilterOptions = [
+    { value: "", label: "All Owners" },
+    ...ownerOptions,
+  ];
+
+  const activeTodoIssue = todoIssueId
+    ? (unsolvedIssues.find((i) => i.id === todoIssueId) ?? null)
+    : null;
+  const activeSolvingIssue = solvingId
+    ? (unsolvedIssues.find((i) => i.id === solvingId) ?? null)
+    : null;
+
   const renderSourceBadge = (issue: IssueRead) => {
     if (!issue.source) return null;
     if (issue.source.type === "measurable") {
       return (
-        <Badge variant="accent">
+        <Badge variant="brand">
           {issue.source.measurable_name || issue.source.measurable_id} ·{" "}
-          {issue.source.week_start ? formatShortWeek(issue.source.week_start) : ""}
+          {issue.source.week_start
+            ? formatShortWeek(issue.source.week_start)
+            : ""}
         </Badge>
       );
     }
     if (issue.source.type === "rock") {
-      return <Badge variant="danger">Rock: {issue.source.rock_title || issue.source.rock_id}</Badge>;
+      return (
+        <Badge variant="off-track">
+          Rock: {issue.source.rock_title || issue.source.rock_id}
+        </Badge>
+      );
     }
-    return <Badge variant="warning">To-Do: {issue.source.todo_title || issue.source.todo_id}</Badge>;
+    return (
+      <Badge variant="warning">
+        To-Do: {issue.source.todo_title || issue.source.todo_id}
+      </Badge>
+    );
   };
 
+  const renderAddTodoForm = (issue: IssueRead, stacked = false) => (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!todoTitle.trim()) return;
+        addTodoMutation.mutate({
+          issueId: issue.id,
+          title: todoTitle.trim(),
+          ownerId: todoOwnerId || eligibleOwners[0]?.id || "",
+        });
+      }}
+      className={cn(
+        "flex flex-col gap-2",
+        !stacked &&
+          "mt-3 rounded-[8px] border border-[var(--accent-border)] bg-[var(--accent-subtle)]/50 p-3 sm:flex-row sm:items-center"
+      )}
+    >
+      <Input
+        placeholder="To-Do action item (due in 7 days)..."
+        aria-label="To-Do title from Issue"
+        value={todoTitle}
+        onChange={(e) => setTodoTitle(e.target.value)}
+        className="flex-1"
+      />
+      <SelectField
+        ariaLabel="To-Do owner"
+        value={todoOwnerId || eligibleOwners[0]?.id || ""}
+        onValueChange={setTodoOwnerId}
+        options={ownerOptions}
+        size={stacked ? "md" : "sm"}
+        triggerClassName={stacked ? "w-full" : "sm:w-40"}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          variant="primary"
+          disabled={!todoTitle.trim() || addTodoMutation.isPending}
+          className={stacked ? "flex-1" : undefined}
+        >
+          Save To-Do
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setTodoIssueId(null)}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+
+  const renderSolveForm = (issue: IssueRead, stacked = false) => (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!resolutionNote.trim()) {
+          pushToast({
+            title: "Resolution note is required",
+            variant: "error",
+          });
+          return;
+        }
+        solveMutation.mutate({
+          issueId: issue.id,
+          note: resolutionNote.trim(),
+        });
+      }}
+      className={cn(
+        "flex flex-col gap-2",
+        !stacked &&
+          "mt-3 rounded-[8px] border border-[var(--status-on-track-border)] bg-[var(--status-on-track-bg)] p-3 sm:flex-row sm:items-center"
+      )}
+    >
+      <Input
+        placeholder="Required resolution note..."
+        aria-label="Resolution note"
+        value={resolutionNote}
+        onChange={(e) => setResolutionNote(e.target.value)}
+        className="flex-1"
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          variant="primary"
+          disabled={!resolutionNote.trim() || solveMutation.isPending}
+          className={stacked ? "flex-1" : undefined}
+        >
+          Confirm Solve
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setSolvingId(null)}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+
   return (
-    <Card data-testid="issues-section">
+    <Card className="flex h-full flex-col" data-testid="issues-section">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-rose-600" />
+            <AlertCircle className="h-4 w-4 text-[var(--status-danger-text)]" />
             <CardTitle>
               {mode === "meeting" ? "IDS · Identify, Discuss, Solve" : "Issues"}
             </CardTitle>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
             Ordered by priority (5 → 1), oldest first, no priority last.
           </p>
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("unsolved")}
-            className={cn(
-              "rounded-md px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
-              activeTab === "unsolved"
-                ? "bg-white text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
-            )}
-          >
-            Unsolved ({unsolvedIssues.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("solved")}
-            className={cn(
-              "rounded-md px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
-              activeTab === "solved"
-                ? "bg-white text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
-            )}
-          >
-            Solved
-          </button>
-        </div>
+
+        <SegmentedControl
+          value={effectiveTab}
+          onChange={(next) => {
+            setActiveTab(next);
+            setUnsolvedPageState((prev) => ({
+              ...prev,
+              focusKey: activeFocusId,
+            }));
+          }}
+          size="sm"
+          ariaLabel="Issues status view"
+          options={[
+            {
+              value: "unsolved",
+              label: (
+                <span className="tabular-nums">
+                  Unsolved ({unsolvedIssues.length})
+                </span>
+              ),
+            },
+            {
+              value: "solved",
+              label: (
+                <span className="tabular-nums">
+                  Solved
+                  {solvedQuery.data ? ` (${solvedPages.length}${solvedCursor ? "+" : ""})` : ""}
+                </span>
+              ),
+            },
+          ]}
+        />
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        {activeTab === "unsolved" ? (
+      <CardContent className="flex flex-1 flex-col gap-4">
+        {effectiveTab === "unsolved" ? (
           <>
             {canWrite && (
               <form
@@ -270,31 +568,27 @@ export function IssuesSection({
                   e.preventDefault();
                   if (newTitle.trim()) createIssueMutation.mutate();
                 }}
-                className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:flex-row"
+                className="flex flex-col gap-2 rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3 sm:flex-row sm:items-center"
               >
                 <Input
                   placeholder="Raise a new Issue..."
                   aria-label="New Issue title"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="flex-1 bg-white"
+                  className="flex-1"
                 />
-                <select
-                  aria-label="New Issue priority"
+                <SelectField
+                  ariaLabel="New Issue priority"
                   value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700"
-                >
-                  <option value="">No priority</option>
-                  {[5, 4, 3, 2, 1].map((p) => (
-                    <option key={p} value={p}>
-                      Priority {p}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setNewPriority}
+                  options={NEW_PRIORITY_OPTIONS}
+                  size="md"
+                  triggerClassName="w-full sm:w-36"
+                />
                 <Button
                   type="submit"
-                  size="default"
+                  size="md"
+                  variant="primary"
                   disabled={!newTitle.trim() || createIssueMutation.isPending}
                 >
                   <Plus className="h-4 w-4" />
@@ -303,277 +597,297 @@ export function IssuesSection({
               </form>
             )}
 
-            <div className="space-y-2.5">
-              {unsolvedIssues.length === 0 && (
-                <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                  No unsolved Issues for this team.
-                </p>
-              )}
-
-              {unsolvedIssues.map((issue, idx) => {
-                const isHighlighted = highlightedIssueId === issue.id;
-                const isSolving = solvingId === issue.id;
-                const isAddingTodo = todoIssueId === issue.id;
-
-                return (
-                  <div
-                    key={issue.id}
-                    data-testid={`issue-card-${issue.id}`}
-                    className={cn(
-                      "rounded-xl border p-3.5 transition-all",
-                      isHighlighted
-                        ? "border-teal-500 bg-teal-50/60 ring-2 ring-teal-500/30"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    )}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-semibold text-slate-400">
-                            #{idx + 1}
-                          </span>
-                          <select
-                            aria-label={`Priority for ${issue.title}`}
-                            disabled={!canWrite}
-                            value={issue.priority ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value ? Number(e.target.value) : null;
-                              priorityMutation.mutate({
-                                issueId: issue.id,
-                                priority: val,
-                                version: issue.version,
-                              });
-                            }}
-                            className={cn(
-                              "rounded-md border px-2 py-0.5 text-xs font-bold",
-                              issue.priority && issue.priority >= 4
-                                ? "border-rose-200 bg-rose-50 text-rose-800"
-                                : issue.priority
-                                  ? "border-amber-200 bg-amber-50 text-amber-800"
-                                  : "border-slate-200 bg-slate-100 text-slate-500"
-                            )}
-                          >
-                            <option value="">No Prio</option>
-                            {[5, 4, 3, 2, 1].map((p) => (
-                              <option key={p} value={p}>
-                                P{p}
-                              </option>
-                            ))}
-                          </select>
-                          <h4 className="text-sm font-semibold text-slate-900">{issue.title}</h4>
-                          {renderSourceBadge(issue)}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                          <span>
-                            Owner:{" "}
-                            <strong className="font-medium text-slate-700">
-                              {issue.owner_name}
-                            </strong>
-                          </span>
-                          <span>Created {formatChicagoTimestamp(issue.created_at)}</span>
-                        </div>
-                      </div>
-
-                      {canWrite && (
-                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setTodoIssueId(isAddingTodo ? null : issue.id);
-                              setSolvingId(null);
-                              setTodoOwnerId(eligibleOwners[0]?.id || "");
-                            }}
-                          >
-                            <ListTodo className="h-3.5 w-3.5" />
-                            Add To-Do
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="accent"
-                            onClick={() => {
-                              setSolvingId(isSolving ? null : issue.id);
-                              setTodoIssueId(null);
-                            }}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Solve
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {isAddingTodo && canWrite && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!todoTitle.trim()) return;
-                          addTodoMutation.mutate({
-                            issueId: issue.id,
-                            title: todoTitle.trim(),
-                            ownerId: todoOwnerId || eligibleOwners[0]?.id || "",
-                          });
-                        }}
-                        className="mt-3 flex flex-col gap-2 rounded-lg border border-teal-200 bg-teal-50/50 p-3 sm:flex-row sm:items-center"
-                      >
-                        <Input
-                          placeholder="To-Do action item (due in 7 days)..."
-                          aria-label="To-Do title from Issue"
-                          value={todoTitle}
-                          onChange={(e) => setTodoTitle(e.target.value)}
-                          className="flex-1 bg-white"
-                        />
-                        <select
-                          aria-label="To-Do owner"
-                          value={todoOwnerId}
-                          onChange={(e) => setTodoOwnerId(e.target.value)}
-                          className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800"
-                        >
-                          {eligibleOwners.map((owner) => (
-                            <option key={owner.id} value={owner.id}>
-                              {owner.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="flex gap-1.5">
-                          <Button
-                            type="submit"
-                            size="sm"
-                            variant="accent"
-                            disabled={!todoTitle.trim() || addTodoMutation.isPending}
-                          >
-                            Save To-Do
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setTodoIssueId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </form>
-                    )}
-
-                    {isSolving && canWrite && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!resolutionNote.trim()) {
-                            pushToast({
-                              title: "Resolution note is required",
-                              variant: "error",
-                            });
-                            return;
-                          }
-                          solveMutation.mutate({
-                            issueId: issue.id,
-                            note: resolutionNote.trim(),
-                          });
-                        }}
-                        className="mt-3 flex flex-col gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 sm:flex-row sm:items-center"
-                      >
-                        <Input
-                          placeholder="Required resolution note..."
-                          aria-label="Resolution note"
-                          value={resolutionNote}
-                          onChange={(e) => setResolutionNote(e.target.value)}
-                          className="flex-1 bg-white"
-                        />
-                        <div className="flex gap-1.5">
-                          <Button
-                            type="submit"
-                            size="sm"
-                            variant="accent"
-                            disabled={!resolutionNote.trim() || solveMutation.isPending}
-                          >
-                            Confirm Solve
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setSolvingId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          <div className="space-y-3">
+            {/* Search & Owner Filter for Unsolved Issues */}
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
+                <Search className="pointer-events-none absolute top-3.5 left-3 h-4 w-4 text-[var(--text-muted)] sm:top-2.5" />
                 <Input
-                  placeholder="Search solved issues or resolution notes..."
-                  value={solvedSearch}
-                  onChange={(e) => setSolvedSearch(e.target.value)}
+                  placeholder="Search unsolved issues..."
+                  aria-label="Search unsolved issues"
+                  value={isFocusControllingFilters ? "" : unsolvedSearch}
+                  onChange={(e) => {
+                    setUnsolvedSearch(e.target.value);
+                    setUnsolvedPageState({
+                      page: 1,
+                      focusKey: activeFocusId,
+                    });
+                  }}
                   className="pl-9"
                 />
               </div>
-              <select
-                aria-label="Filter solved issues by owner"
+              <SelectField
+                ariaLabel="Filter unsolved issues by owner"
+                value={isFocusControllingFilters ? "" : unsolvedOwner}
+                onValueChange={(val) => {
+                  setUnsolvedOwner(val);
+                  setUnsolvedPageState({
+                    page: 1,
+                    focusKey: activeFocusId,
+                  });
+                }}
+                options={ownerFilterOptions}
+                size="md"
+                triggerClassName="w-full sm:w-40"
+              />
+            </div>
+
+            <div className="flex-1 space-y-2">
+              {pagedUnsolved.length === 0 ? (
+                <p className="rounded-[8px] border border-dashed border-[var(--border-default)] p-6 text-center text-sm text-[var(--text-muted)]">
+                  {unsolvedIssues.length === 0
+                    ? "No unsolved Issues for this team."
+                    : "No unsolved Issues match the current filters."}
+                </p>
+              ) : (
+                pagedUnsolved.map((issue) => {
+                  const rank = issueRankMap.get(issue.id) ?? 0;
+                  const isHighlighted = activeFocusId === issue.id;
+                  const isNew = recentlyCreatedId === issue.id;
+                  const isSolving = solvingId === issue.id;
+                  const isAddingTodo = todoIssueId === issue.id;
+
+                  return (
+                    <div
+                      key={issue.id}
+                      data-testid={`issue-card-${issue.id}`}
+                      className={cn(
+                        "rounded-[8px] border p-3 transition-colors sm:px-4",
+                        isHighlighted
+                          ? "border-[var(--accent-primary)] bg-[var(--accent-subtle)]/55"
+                          : "border-[var(--border-default)] bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]"
+                      )}
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-[var(--text-muted)] tabular-nums">
+                              #{rank}
+                            </span>
+                            <SelectField
+                              ariaLabel={`Priority for ${issue.title}`}
+                              disabled={!canWrite}
+                              value={
+                                issue.priority !== null
+                                  ? String(issue.priority)
+                                  : ""
+                              }
+                              onValueChange={(val) => {
+                                priorityMutation.mutate({
+                                  issueId: issue.id,
+                                  priority: val ? Number(val) : null,
+                                  version: issue.version,
+                                });
+                              }}
+                              options={INLINE_PRIORITY_OPTIONS}
+                              size="sm"
+                              triggerClassName={cn(
+                                "w-24 font-bold tabular-nums",
+                                issue.priority && issue.priority >= 4
+                                  ? "border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-text)]"
+                                  : issue.priority
+                                    ? "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]"
+                                    : "bg-[var(--bg-subtle)] text-[var(--text-muted)]"
+                              )}
+                            />
+                            <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                              {issue.title}
+                            </h4>
+                            {isNew && (
+                              <Badge variant="brand" dot>
+                                New
+                              </Badge>
+                            )}
+                            {renderSourceBadge(issue)}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)]">
+                            <span>
+                              Owner:{" "}
+                              <strong className="font-semibold text-[var(--text-secondary)]">
+                                {issue.owner_name}
+                              </strong>
+                            </span>
+                            <span className="tabular-nums">
+                              Created {formatChicagoTimestamp(issue.created_at)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {canWrite && (
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setTodoIssueId(isAddingTodo ? null : issue.id);
+                                setSolvingId(null);
+                                setTodoOwnerId(eligibleOwners[0]?.id || "");
+                              }}
+                            >
+                              <ListTodo className="h-3.5 w-3.5" />
+                              Add To-Do
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => {
+                                setSolvingId(isSolving ? null : issue.id);
+                                setTodoIssueId(null);
+                              }}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Solve
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {tier !== "mobile" &&
+                        isAddingTodo &&
+                        canWrite &&
+                        renderAddTodoForm(issue, false)}
+                      {tier !== "mobile" &&
+                        isSolving &&
+                        canWrite &&
+                        renderSolveForm(issue, false)}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <PaginationBar
+              page={safeUnsolvedPage}
+              pageSize={PAGE_SIZE}
+              totalItems={filteredUnsolved.length}
+              onPageChange={(nextPage) =>
+                setUnsolvedPageState({
+                  page: nextPage,
+                  focusKey: activeFocusId,
+                })
+              }
+            />
+          </>
+        ) : (
+          <div className="flex flex-1 flex-col gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-3.5 left-3 h-4 w-4 text-[var(--text-muted)] sm:top-2.5" />
+                <Input
+                  placeholder="Search solved issues or resolution notes..."
+                  value={solvedSearch}
+                  onChange={(e) => {
+                    setSolvedSearch(e.target.value);
+                    setSolvedPage(1);
+                  }}
+                  className="pl-9"
+                />
+              </div>
+              <SelectField
+                ariaLabel="Filter solved issues by owner"
                 value={solvedOwner}
-                onChange={(e) => setSolvedOwner(e.target.value)}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700"
-              >
-                <option value="">All Owners</option>
-                {eligibleOwners.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(val) => {
+                  setSolvedOwner(val);
+                  setSolvedPage(1);
+                }}
+                options={ownerFilterOptions}
+                size="md"
+                triggerClassName="w-full sm:w-44"
+              />
             </div>
 
             {solvedQuery.isLoading ? (
-              <p className="py-6 text-center text-sm text-slate-500">Loading solved issues...</p>
-            ) : solvedPages.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+              <p className="flex-1 py-6 text-center text-sm text-[var(--text-muted)]">
+                Loading solved issues...
+              </p>
+            ) : pagedSolved.length === 0 ? (
+              <p className="flex-1 rounded-[8px] border border-dashed border-[var(--border-default)] p-6 text-center text-sm text-[var(--text-muted)]">
                 No solved Issues match the current filters.
               </p>
             ) : (
-              <div className="space-y-2.5">
-                {solvedPages.map((issue) => (
-                  <div
-                    key={issue.id}
-                    className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="success">Solved</Badge>
-                        <span className="text-sm font-semibold text-slate-900">{issue.title}</span>
-                        {renderSourceBadge(issue)}
+              <>
+                <div className="flex-1 space-y-2">
+                  {pagedSolved.map((issue) => (
+                    <div
+                      key={issue.id}
+                      className="rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-subtle)] p-3 sm:px-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="on-track" dot>
+                            Solved
+                          </Badge>
+                          <span className="text-sm font-semibold text-[var(--text-primary)]">
+                            {issue.title}
+                          </span>
+                          {renderSourceBadge(issue)}
+                        </div>
+                        <span className="text-xs text-[var(--text-muted)] tabular-nums">
+                          {issue.solved_at
+                            ? formatChicagoTimestamp(issue.solved_at)
+                            : ""}
+                        </span>
                       </div>
-                      <span className="text-xs text-slate-500">
-                        {issue.solved_at ? formatChicagoTimestamp(issue.solved_at) : ""}
-                      </span>
+                      <p className="mt-2 rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                        <strong className="font-semibold text-[var(--text-primary)]">
+                          Resolution:
+                        </strong>{" "}
+                        {issue.resolution_note}
+                      </p>
                     </div>
-                    <p className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                      <strong className="text-slate-900">Resolution:</strong>{" "}
-                      {issue.resolution_note}
-                    </p>
-                  </div>
-                ))}
-                {solvedCursor && (
-                  <div className="flex justify-center pt-2">
-                    <Button size="sm" variant="outline" onClick={loadMoreSolved}>
-                      Load More Solved Issues
-                    </Button>
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+
+                <PaginationBar
+                  page={safeSolvedPage}
+                  pageSize={PAGE_SIZE}
+                  totalItems={solvedPages.length}
+                  onPageChange={setSolvedPage}
+                  hasMoreRemote={Boolean(solvedCursor)}
+                  loadingMoreRemote={loadingMoreSolved}
+                  onLoadMoreRemote={loadMoreSolved}
+                />
+              </>
             )}
           </div>
         )}
       </CardContent>
+
+      {/* Mobile Keyboard-Safe Bottom Sheets for Add To-Do & Solve Issue */}
+      {tier === "mobile" && canWrite && (
+        <>
+          <ResponsiveSheet
+            open={Boolean(activeTodoIssue)}
+            onOpenChange={(open) => {
+              if (!open) setTodoIssueId(null);
+            }}
+            title="Add 7-Day To-Do"
+            description={activeTodoIssue?.title}
+            desktopVariant="modal"
+          >
+            {activeTodoIssue && (
+              <div className="p-4">
+                {renderAddTodoForm(activeTodoIssue, true)}
+              </div>
+            )}
+          </ResponsiveSheet>
+
+          <ResponsiveSheet
+            open={Boolean(activeSolvingIssue)}
+            onOpenChange={(open) => {
+              if (!open) setSolvingId(null);
+            }}
+            title="Solve Issue"
+            description={activeSolvingIssue?.title}
+            desktopVariant="modal"
+          >
+            {activeSolvingIssue && (
+              <div className="p-4">
+                {renderSolveForm(activeSolvingIssue, true)}
+              </div>
+            )}
+          </ResponsiveSheet>
+        </>
+      )}
     </Card>
   );
 }
