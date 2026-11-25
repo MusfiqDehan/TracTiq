@@ -40,37 +40,49 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed right-4 bottom-4 z-50 flex max-w-sm flex-col gap-2"
+        className="pointer-events-none fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] left-4 z-50 flex flex-col gap-2 sm:right-4 sm:bottom-4 sm:left-auto sm:w-full sm:max-w-sm"
       >
         {toasts.map((t) => (
           <div
             key={t.id}
             role="status"
             className={cn(
-              "pointer-events-auto flex items-start gap-3 rounded-xl border bg-white p-3.5 shadow-lg",
-              t.variant === "error" && "border-rose-200 bg-rose-50 text-rose-950",
-              t.variant === "warning" && "border-amber-200 bg-amber-50 text-amber-950",
-              t.variant === "success" && "border-emerald-200 bg-emerald-50 text-emerald-950",
-              (!t.variant || t.variant === "default") && "border-slate-200 text-slate-900"
+              "pointer-events-auto flex items-start gap-3 rounded-[12px] border bg-[var(--bg-elevated)] p-3 text-[var(--text-primary)]",
+              t.variant === "error" &&
+                "border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-text)]",
+              t.variant === "warning" &&
+                "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]",
+              t.variant === "success" &&
+                "border-[var(--status-on-track-border)] bg-[var(--status-on-track-bg)] text-[var(--status-on-track-text)]",
+              (!t.variant || t.variant === "default") &&
+                "border-[var(--border-default)]"
             )}
           >
-            {t.variant === "error" && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />}
-            {t.variant === "warning" && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />}
-            {t.variant === "success" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}
+            {t.variant === "error" && (
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            {t.variant === "warning" && (
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            {t.variant === "success" && (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
             {(!t.variant || t.variant === "default") && (
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-text)]" />
             )}
             <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold">{t.title}</p>
-              {t.description && <p className="mt-0.5 text-xs opacity-85">{t.description}</p>}
+              <p className="font-semibold leading-snug">{t.title}</p>
+              {t.description && (
+                <p className="mt-1 text-xs opacity-90">{t.description}</p>
+              )}
             </div>
             <button
               type="button"
               onClick={() => dismiss(t.id)}
-              className="rounded p-0.5 opacity-60 hover:opacity-100"
+              className="-m-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] opacity-70 transition-colors hover:bg-[var(--bg-hover)] hover:opacity-100 sm:m-0 sm:h-7 sm:w-7 cursor-pointer"
               aria-label="Close notification"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         ))}
