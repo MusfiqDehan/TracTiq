@@ -53,7 +53,10 @@ cd frontend && bun run test:unit
 cd frontend && bun run test:e2e
 ```
 
-Committed Playwright failure trace artifact: [frontend/e2e/artifacts/sample-failure-trace.zip](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/sample-failure-trace.zip).
+Committed Playwright failure artifacts:
+- Trace archive: [frontend/e2e/artifacts/sample-failure-trace.zip](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/sample-failure-trace.zip)
+- Side-by-side failure video: [frontend/e2e/artifacts/sample-failure-video.mp4](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/sample-failure-video.mp4)
+- Root cause, timeline & handling docs: [frontend/e2e/artifacts/README.md](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/README.md)
 
 ## Fixture & Clock Strategy
 
