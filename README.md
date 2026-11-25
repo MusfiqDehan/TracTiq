@@ -1,3 +1,7 @@
+<p>
+  <img src="frontend/public/logo-wordmark.svg" alt="TracTiq — EOS L10" height="36" />
+</p>
+
 # TracTiq — EOS Level 10 Meeting & Team Operating System
 
 Full-stack, real-time EOS Level 10 Meeting and Team Management application built with **Next.js 16.4.6** (`bun`, port `3003`), **FastAPI 0.165.0** (`uv`, Python `3.14.10`, port `8003`), and **PostgreSQL 18.7** (port `5443`).
