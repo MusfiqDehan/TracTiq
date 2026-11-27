@@ -1,18 +1,59 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="frontend/public/logo-wordmark-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="frontend/public/logo-wordmark.svg" />
+  <img src="frontend/public/logo-wordmark.svg" alt="TracTiq — EOS L10" height="52" />
+</picture>
+
+<h1>EOS Level 10 Meeting &amp; Team Operating System</h1>
+
 <p>
-  <img src="frontend/public/logo-wordmark.svg" alt="TracTiq — EOS L10" height="36" />
+  Full-stack, real-time EOS Level 10 Meeting and Team Management application with live Scorecards, Q4 Rocks &amp; Milestones, IDS issue solving, To-Dos, and WebSocket-synchronized meeting facilitation.
 </p>
 
-# TracTiq — EOS Level 10 Meeting & Team Operating System
+<p>
+  <img src="https://img.shields.io/badge/Next.js-16.4.6-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js 16.4.6" />
+  <img src="https://img.shields.io/badge/React-19.3.1-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React 19.3.1" />
+  <img src="https://img.shields.io/badge/TypeScript-6.0.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 6.0.3" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-4.3.5-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4.3.5" />
+  <img src="https://img.shields.io/badge/Bun-1.4.4-14151A?style=for-the-badge&logo=bun&logoColor=FBF0DF" alt="Bun 1.4.4" />
+</p>
 
-Full-stack, real-time EOS Level 10 Meeting and Team Management application built with **Next.js 16.4.6** (`bun`, port `3003`), **FastAPI 0.165.0** (`uv`, Python `3.14.10`, port `8003`), and **PostgreSQL 18.7** (port `5443`).
+<p>
+  <img src="https://img.shields.io/badge/FastAPI-0.165.0-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI 0.165.0" />
+  <img src="https://img.shields.io/badge/Python-3.14.10-3776AB?style=for-the-badge&logo=python&logoColor=FFD43B" alt="Python 3.14.10" />
+  <img src="https://img.shields.io/badge/uv-0.13.5-261230?style=for-the-badge&logo=uv&logoColor=DE5FE9" alt="uv 0.13.5" />
+  <img src="https://img.shields.io/badge/PostgreSQL-18.7-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL 18.7" />
+  <img src="https://img.shields.io/badge/SQLAlchemy-2.1.9-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy 2.1.9" />
+  <img src="https://img.shields.io/badge/Docker-29.10.1-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker 29.10.1" />
+</p>
 
-## Quick Start (`docker compose up`)
+<p>
+  <strong>Frontend:</strong> <code>:3003</code> (<code>bun</code>) &nbsp;&middot;&nbsp;
+  <strong>Backend API:</strong> <code>:8003</code> (<code>uv</code>) &nbsp;&middot;&nbsp;
+  <strong>PostgreSQL:</strong> <code>:5443</code>
+</p>
+
+<p>
+  <a href="#quick-start">Quick Start</a> &nbsp;&bull;&nbsp;
+  <a href="#rules-report-command">Rules Report</a> &nbsp;&bull;&nbsp;
+  <a href="#running-all-tests">Tests</a> &nbsp;&bull;&nbsp;
+  <a href="#architecture-tradeoffs--known-limitations">Architecture</a> &nbsp;&bull;&nbsp;
+  <a href="#core-journey">Core Journey</a>
+</p>
+
+</div>
+
+---
+
+## Quick Start
 
 ```bash
 docker compose up -d --build
 ```
 
-- **Frontend:** http://localhost:3003 (Executive Landing Page, Team Workspace `/teams/team_lead`, Level 10 Meeting `/teams/team_lead/meeting`)
+- **Frontend:** http://localhost:3003
 - **Backend OpenAPI / Swagger:** http://localhost:8003/docs
 - **PostgreSQL 18.7:** `localhost:5443` (`postgres` / `postgres` / `tractiq`)
 
@@ -30,9 +71,9 @@ docker compose run --rm backend uv run rules-report
 docker compose run --rm -e APP_NOW=2026-11-01T07:30:00Z backend uv run rules-report
 ```
 
-The default report output is committed in [rules_report.json](file:///home/musfiq/Products/TracTiq/rules_report.json).
+The default report output is committed in [rules_report.json](./rules_report.json).
 
-## Running All Tests (Unattended)
+## Running All Tests
 
 Run the full verification suite (backend `ruff` + `mypy` + `pytest` rules/authz/concurrency/OpenAPI suites + golden `rules_report.json` check + frontend `tsc` + `eslint` + `vitest` + two-browser Playwright E2E sync test):
 
@@ -54,9 +95,10 @@ cd frontend && bun run test:e2e
 ```
 
 Committed Playwright failure artifacts:
-- Trace archive: [frontend/e2e/artifacts/sample-failure-trace.zip](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/sample-failure-trace.zip)
-- Side-by-side failure video: [frontend/e2e/artifacts/sample-failure-video.mp4](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/sample-failure-video.mp4)
-- Root cause, timeline & handling docs: [frontend/e2e/artifacts/README.md](file:///home/musfiq/Products/TracTiq/frontend/e2e/artifacts/README.md)
+
+- Trace archive: [frontend/e2e/artifacts/sample-failure-trace.zip](./frontend/e2e/artifacts/sample-failure-trace.zip)
+- Side-by-side failure video: [frontend/e2e/artifacts/sample-failure-video.mp4](./frontend/e2e/artifacts/sample-failure-video.mp4)
+- Root cause, timeline & handling docs: [frontend/e2e/artifacts/README.md](./frontend/e2e/artifacts/README.md)
 
 ## Fixture & Clock Strategy
 
@@ -66,7 +108,7 @@ Committed Playwright failure artifacts:
 
 ## Architecture, Tradeoffs & Known Limitations
 
-- See [DECISION_RECORD.md](file:///home/musfiq/Products/TracTiq/DECISION_RECORD.md) for data model, API, WebSocket state recovery, concurrency deduplication, immutable meeting summary snapshots, and 1,000-company scaling tradeoffs.
+- See [DECISION_RECORD.md](./DECISION_RECORD.md) for data model, API, WebSocket state recovery, concurrency deduplication, immutable meeting summary snapshots, and 1,000-company scaling tradeoffs.
 - **Assumptions & Limitations:**
   - Seeded users switch via zero-password `POST /api/auth/switch` minting real HS256 JWT access/refresh tokens (signup/passwords are out of scope).
   - Cross-team/unauthorized team access returns `404 TEAM_NOT_FOUND` to avoid leaking team ID existence; role violations (`observer`, non-facilitator) return `403`.
