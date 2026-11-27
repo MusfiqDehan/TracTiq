@@ -13,20 +13,20 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Next.js-16.4.6-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js 16.4.6" />
-  <img src="https://img.shields.io/badge/React-19.3.1-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React 19.3.1" />
-  <img src="https://img.shields.io/badge/TypeScript-6.0.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 6.0.3" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-4.3.5-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4.3.5" />
-  <img src="https://img.shields.io/badge/Bun-1.4.4-14151A?style=for-the-badge&logo=bun&logoColor=FBF0DF" alt="Bun 1.4.4" />
+  <img src="./.github/badges/nextjs.svg" alt="Next.js 16.4.6" />
+  <img src="./.github/badges/react.svg" alt="React 19.3.1" />
+  <img src="./.github/badges/typescript.svg" alt="TypeScript 6.0.3" />
+  <img src="./.github/badges/tailwindcss.svg" alt="Tailwind CSS 4.3.5" />
+  <img src="./.github/badges/bun.svg" alt="Bun 1.4.4" />
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/FastAPI-0.165.0-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI 0.165.0" />
-  <img src="https://img.shields.io/badge/Python-3.14.10-3776AB?style=for-the-badge&logo=python&logoColor=FFD43B" alt="Python 3.14.10" />
-  <img src="https://img.shields.io/badge/uv-0.13.5-261230?style=for-the-badge&logo=uv&logoColor=DE5FE9" alt="uv 0.13.5" />
-  <img src="https://img.shields.io/badge/PostgreSQL-18.7-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL 18.7" />
-  <img src="https://img.shields.io/badge/SQLAlchemy-2.1.9-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy 2.1.9" />
-  <img src="https://img.shields.io/badge/Docker-29.10.1-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker 29.10.1" />
+  <img src="./.github/badges/fastapi.svg" alt="FastAPI 0.165.0" />
+  <img src="./.github/badges/python.svg" alt="Python 3.14.10" />
+  <img src="./.github/badges/uv.svg" alt="uv 0.13.5" />
+  <img src="./.github/badges/postgresql.svg" alt="PostgreSQL 18.7" />
+  <img src="./.github/badges/sqlalchemy.svg" alt="SQLAlchemy 2.1.9" />
+  <img src="./.github/badges/docker.svg" alt="Docker 29.10.1" />
 </p>
 
 <p>
