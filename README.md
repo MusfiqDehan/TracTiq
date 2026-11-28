@@ -121,6 +121,6 @@ Committed Playwright failure artifacts:
 2. Update last closed week scores inline, toggle To-Dos, and review Q4 Rocks & Milestones (and bonus **Make it an Issue** on off-track Rocks / overdue To-Dos).
 3. Start the **Level 10 Meeting** as `u2`; `u5` joins live in read-only mode. Advance **Scorecard (5m)** → **IDS (60m)** (solve an Issue, add a 7-day To-Do) → **Conclude (10m)** (recap new To-Dos, submit 1–10 ratings) → **End Meeting** to view the frozen **Meeting Summary**.
 
-## AI Tools Disclosure
+## AI Tools
 
-- **Antigravity AI Assistant (Planning & Execution Agents):** Used for multi-lens architectural brainstorming (`/egm-brainstorm`), seed boundary forensics verification, modular FastAPI/SQLAlchemy/Next.js scaffolding, Alembic migration and constraint generation, and unit/integration/Playwright test implementation. All business rules, database constraints, and generated code were verified directly against `seed.json` and executed tests.
+- **Antigravity AI Assistant (Planning & Execution Agents):** Used for multi-lens architectural brainstorming (`/egm-brainstorm`), planning or fine-tune planning (`/plan`+`/grill-me`), seed boundary forensics verification, modular FastAPI/SQLAlchemy/Next.js scaffolding, Alembic migration and constraint generation, and unit/integration/Playwright test implementation. All business rules, database constraints, and generated code were verified directly against `seed.json` and executed tests.
