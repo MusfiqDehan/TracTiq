@@ -123,4 +123,4 @@ Committed Playwright failure artifacts:
 
 ## AI Tools Disclosure
 
-- **Antigravity AI Assistant (Planning & Execution Agents):** Used for multi-lens architectural brainstorming (`/egm-brainstorm`), seed boundary forensics verification, modular FastAPI/SQLAlchemy/Next.js scaffolding, Alembic migration and constraint generation, and unit/integration/Playwright test implementation. All business rules, database constraints, and generated code were verified directly against `seed.json` and executed tests.
+- **Antigravity AI Assistant (Planning & Execution Agents):** Used for multi-lens architectural brainstorming (`/egm-brainstorm`), planning or fine-tune planning (`/plan`+`/grill-me`), seed boundary forensics verification, modular FastAPI/SQLAlchemy/Next.js scaffolding, Alembic migration and constraint generation, and unit/integration/Playwright test implementation. All business rules, database constraints, and generated code were verified directly against `seed.json` and executed tests.
